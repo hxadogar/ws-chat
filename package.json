@@ -1,0 +1,19 @@
+{
+  "name": "ws-chat",
+  "version": "1.0.0",
+  "description": "simple websocket chat",
+  "scripts": {
+    "start": "ts-node src/server.ts",
+    "build": "tsc"
+  },
+  "author": "Hamza Dogar",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/ws": "^8.5.0",
+    "ts-node": "^10.9.0"
+  }
+}
