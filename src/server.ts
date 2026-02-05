@@ -3,14 +3,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 const PORT = 3000;
 const wss = new WebSocketServer({ port: PORT });
 
-// track who is in which room
-// each room is just a set of websockets
 const rooms = new Map<string, Set<WebSocket>>();
-
-// track username for each connection
 const names = new Map<WebSocket, string>();
-
-// track which room each person is in (one room at a time for simplicity)
 const currentRoom = new Map<WebSocket, string>();
 
 function sendTo(ws: WebSocket, data: object) {
@@ -29,6 +23,18 @@ function broadcastToRoom(room: string, data: object, exclude?: WebSocket) {
   }
 }
 
+// get list of names in a room
+function getRoomMembers(room: string): string[] {
+  const members = rooms.get(room);
+  if (!members) return [];
+  const result: string[] = [];
+  for (const ws of members) {
+    const name = names.get(ws);
+    if (name) result.push(name);
+  }
+  return result;
+}
+
 wss.on('connection', (ws) => {
 
   ws.on('message', (raw) => {
@@ -41,9 +47,13 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'join') {
-      // join a room with a username
       const name = msg.name || 'anon';
       const room = msg.room || 'general';
+
+      // leave old room first if in one
+      if (currentRoom.has(ws)) {
+        leaveRoom(ws);
+      }
 
       names.set(ws, name);
       currentRoom.set(ws, room);
@@ -53,25 +63,33 @@ wss.on('connection', (ws) => {
       }
       rooms.get(room)!.add(ws);
 
-      // tell the user they joined
-      sendTo(ws, { type: 'joined', room, name });
+      // tell them who is online
+      const members = getRoomMembers(room);
+      sendTo(ws, { type: 'joined', room, name, online: members });
 
-      // tell everyone else
       broadcastToRoom(room, { type: 'system', text: name + ' joined the chat' }, ws);
 
     } else if (msg.type === 'msg') {
-      // send a message to the room
       const room = currentRoom.get(ws);
       const name = names.get(ws);
       if (!room || !name) {
         sendTo(ws, { type: 'error', text: 'join a room first' });
         return;
       }
-
       broadcastToRoom(room, { type: 'msg', name, text: msg.text }, ws);
+
+    } else if (msg.type === 'who') {
+      // list who is in your room
+      const room = currentRoom.get(ws);
+      if (!room) {
+        sendTo(ws, { type: 'error', text: 'join a room first' });
+        return;
+      }
+      sendTo(ws, { type: 'who', room, online: getRoomMembers(room) });
 
     } else if (msg.type === 'leave') {
       leaveRoom(ws);
+      sendTo(ws, { type: 'left' });
     }
   });
 
@@ -88,7 +106,6 @@ function leaveRoom(ws: WebSocket) {
   if (room && rooms.has(room)) {
     rooms.get(room)!.delete(ws);
     broadcastToRoom(room, { type: 'system', text: name + ' left the chat' });
-    // clean up empty rooms
     if (rooms.get(room)!.size === 0) {
       rooms.delete(room);
     }
