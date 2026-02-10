@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ws-chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a1a; color: #eee; }
+    #app { max-width: 500px; margin: 30px auto; }
+    h2 { margin-bottom: 15px; }
+    #login, #chat { padding: 20px; }
+    #chat { display: none; }
+    input { background: #333; color: #eee; border: 1px solid #555; padding: 8px; width: 100%; margin: 5px 0; }
+    button { background: #444; color: #eee; border: none; padding: 8px 16px; cursor: pointer; margin: 5px 0; }
+    button:hover { background: #555; }
+    #messages { height: 350px; overflow-y: auto; border: 1px solid #333; padding: 10px; margin: 10px 0; }
+    .system { color: #888; }
+    .msg { margin: 3px 0; }
+    .name { color: #6cb6ff; }
+    #info { color: #888; font-size: 12px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="login">
+      <h2>ws-chat</h2>
+      <input id="nameInput" placeholder="your name" />
+      <input id="roomInput" placeholder="room name" value="general" />
+      <button onclick="join()">join</button>
+    </div>
+    <div id="chat">
+      <div id="info"></div>
+      <div id="messages"></div>
+      <input id="msgInput" placeholder="type something..." onkeydown="if(event.key==='Enter')send()" />
+    </div>
+  </div>
+
+  <script>
+    let ws;
+
+    function join() {
+      const name = document.getElementById('nameInput').value || 'anon';
+      const room = document.getElementById('roomInput').value || 'general';
+
+      ws = new WebSocket('ws://localhost:3000');
+
+      ws.onopen = function() {
+        ws.send(JSON.stringify({ type: 'join', name: name, room: room }));
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('chat').style.display = 'block';
+      };
+
+      ws.onmessage = function(e) {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'joined') {
+          document.getElementById('info').textContent = 'room: ' + msg.room + ' | online: ' + msg.online.join(', ');
+          addMsg('joined ' + msg.room, true);
+        } else if (msg.type === 'msg') {
+          addMsg(msg.name + ': ' + msg.text, false);
+        } else if (msg.type === 'system') {
+          addMsg(msg.text, true);
+        } else if (msg.type === 'who') {
+          addMsg('online: ' + msg.online.join(', '), true);
+        } else if (msg.type === 'error') {
+          addMsg('error: ' + msg.text, true);
+        }
+      };
+
+      ws.onclose = function() {
+        addMsg('disconnected from server', true);
+      };
+    }
+
+    function send() {
+      const input = document.getElementById('msgInput');
+      const text = input.value.trim();
+      if (!text || !ws) return;
+
+      if (text === '/who') {
+        ws.send(JSON.stringify({ type: 'who' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'msg', text: text }));
+        addMsg('you: ' + text, false);
+      }
+      input.value = '';
+    }
+
+    function addMsg(text, isSystem) {
+      const div = document.getElementById('messages');
+      const el = document.createElement('div');
+      el.className = isSystem ? 'system' : 'msg';
+      el.textContent = text;
+      div.appendChild(el);
+      div.scrollTop = div.scrollHeight;
+    }
+  </script>
+</body>
+</html>
