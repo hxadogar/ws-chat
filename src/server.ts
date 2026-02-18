@@ -1,7 +1,30 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const PORT = 3000;
-const wss = new WebSocketServer({ port: PORT });
+
+// serve the html file
+const httpServer = http.createServer((req, res) => {
+  if (req.url === '/' || req.url === '/index.html') {
+    const htmlPath = path.join(__dirname, '..', 'public', 'index.html');
+    fs.readFile(htmlPath, (err, data) => {
+      if (err) {
+        res.writeHead(500);
+        res.end('cant read html file');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(data);
+    });
+  } else {
+    res.writeHead(404);
+    res.end('not found');
+  }
+});
+
+const wss = new WebSocketServer({ server: httpServer });
 
 const rooms = new Map<string, Set<WebSocket>>();
 const names = new Map<WebSocket, string>();
@@ -23,7 +46,6 @@ function broadcastToRoom(room: string, data: object, exclude?: WebSocket) {
   }
 }
 
-// get list of names in a room
 function getRoomMembers(room: string): string[] {
   const members = rooms.get(room);
   if (!members) return [];
@@ -50,7 +72,6 @@ wss.on('connection', (ws) => {
       const name = msg.name || 'anon';
       const room = msg.room || 'general';
 
-      // leave old room first if in one
       if (currentRoom.has(ws)) {
         leaveRoom(ws);
       }
@@ -63,10 +84,8 @@ wss.on('connection', (ws) => {
       }
       rooms.get(room)!.add(ws);
 
-      // tell them who is online
       const members = getRoomMembers(room);
       sendTo(ws, { type: 'joined', room, name, online: members });
-
       broadcastToRoom(room, { type: 'system', text: name + ' joined the chat' }, ws);
 
     } else if (msg.type === 'msg') {
@@ -79,7 +98,6 @@ wss.on('connection', (ws) => {
       broadcastToRoom(room, { type: 'msg', name, text: msg.text }, ws);
 
     } else if (msg.type === 'who') {
-      // list who is in your room
       const room = currentRoom.get(ws);
       if (!room) {
         sendTo(ws, { type: 'error', text: 'join a room first' });
@@ -113,4 +131,6 @@ function leaveRoom(ws: WebSocket) {
   currentRoom.delete(ws);
 }
 
-console.log('chat server running on port ' + PORT);
+httpServer.listen(PORT, () => {
+  console.log('chat server running on http://localhost:' + PORT);
+});
